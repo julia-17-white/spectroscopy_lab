@@ -105,7 +105,7 @@ def delta_t_fit(df, peaks):
     plt.plot(x_data, y_data, color='orange', label = 'polynomial fit')
     plt.legend()
 
-    time_diff = 1/lin_fit[1] # 1/(the slope)
+    time_diff = 1/(100*lin_fit[1]) # 1/(the slope)
     return time_diff
 
 
