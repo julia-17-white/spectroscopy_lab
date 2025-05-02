@@ -28,15 +28,14 @@ def obtain_data(filename):
 
     return df
 
-
-#################################################################
-# I will now include various methods for finding the spacing b/w the peaks
-# they should move from less complex to more complex
-
 #################################################################
 # using the scipy peak finding algorithm to locate the peaks
-def peak_finding(df, peak_width, channel):
-    peaks = scipy.signal.find_peaks(df[channel], width=peak_width)
+def peak_finding(df, peak_width, channel, neg = False):
+    if neg == True:
+        x = -1
+    else:
+        x = 1
+    peaks = scipy.signal.find_peaks(x*df[channel], width=peak_width)
     # print(peaks[1])
     plt.figure()
     plt.plot(df['x-axis'], df[channel])
@@ -58,8 +57,7 @@ def delta_t_calc(df, peaks):
     return time_diff
 
 #################################################################
-# instead i can plot the times vs frequency and take the linear part of the polynomial
-# for the frequencies, I will note that they are integer steps in the free spectral range
+# Defining a Number of Fitting Algorithms
 def lin_fitting(x_vals: list, y_vals: list):
 
     # define the Model
@@ -81,7 +79,7 @@ def lin_fitting(x_vals: list, y_vals: list):
 
     print(fit_result.fit_report())
     
-    return (l_vals, slope, intercept)
+    return l_vals, slope, intercept
 
 def pol_fitting(x_vals: list, y_vals: list):
     def func(x, a, b, c, d):
@@ -94,7 +92,41 @@ def pol_fitting(x_vals: list, y_vals: list):
     y_fit = func(x_fit, *popt)
     return x_fit, y_fit
 
+def gauss_fitting(x_vals: list, y_vals: list):
+    # USE **KWARGS TO MAKE THIS MORE ROBUST IF DESIRED
 
+    # define the Model
+    g_model = lm.models.GaussianModel(independent_vars='x')
+
+    # set initial parameters (optional step)
+    g_model.set_param_hint('amplitude', value = 0.5)
+    g_model.set_param_hint('center', value = 0)
+    g_model.set_param_hint('sigma', value = 0.5)
+    g_model.set_param_hint('gamma', value=-2)
+
+    # create parameters
+    my_params = g_model.make_params()
+
+    # perform fit
+    fit_result = g_model.fit(y_vals, x = x_vals, params = my_params)
+
+    # acquiring data from the fit
+    g_vals = fit_result.eval(x=x_vals)
+
+    center = fit_result.params['center'].value
+    center_unc = fit_result.params['center'].stderr
+    height = fit_result.params['amplitude'].value
+    fwhm = fit_result.params['fwhm'].value
+
+    print('The center value is ' + str(center) + ' +/- ' + str(center_unc))
+
+    print(fit_result.fit_report())
+
+    return g_vals, center, height, fwhm
+
+
+#################################################################
+# Building the claibration curve
 def delta_t_fit(df, peaks, fsr):
     plt.figure()
     y_ax = np.arange(len(peaks[0]))
@@ -116,8 +148,8 @@ def delta_t_fit(df, peaks, fsr):
     plt.ylabel('frequency')
     plt.xlabel('time')
 
-    time_diff = lin_fit[1] # 1/(the slope)
-    return time_diff
+    # time_diff = lin_fit[1] # 1/(the slope)
+    # return time_diff
 
 def fsr_calc(l, n):
     # need index of refraction of silicon at 1580nm
@@ -125,6 +157,36 @@ def fsr_calc(l, n):
     fsr = (scipy.constants.c / (2 * l * n) ) * 1E-6 # reported in MHz
     print(f'the free spectral range is {fsr}')
     return fsr
+
+def fwhm_calc(df):
+    # min_data = df
+    # min_data['1'] = df['1']*-1
+    mins = peak_finding(df, 1, '1', True)
+    mid_point = int(len(mins[0])/2)
+    data_min = mins[0][mid_point]
+    data_max = mins[0][mid_point+1]
+    one_peak_df = df.iloc[data_min:data_max]
+
+    x_vals = one_peak_df['x-axis'].values
+    y_vals = one_peak_df['1'].values
+
+    x_shift = x_vals.mean()
+    x_centered = x_vals - x_shift
+
+    y_shift = y_vals.min()
+    y_shifted = y_vals - y_shift
+
+    plt.figure()
+    plt.plot(x_centered, y_shifted)
+    gauss_fit, center, height, fwhm = gauss_fitting(x_centered, y_shifted)
+    plt.plot(x_centered, gauss_fit)
+
+    return fwhm
+
+def finesse_calc(fsr, fwhm, l):
+    finesse_exp = fsr/fwhm
+    finesse_the = ((l*fsr)/(2*(scipy.constants.c)))
+    return finesse_exp, finesse_the
 
 
 def main():
@@ -135,10 +197,14 @@ def main():
 
     # analyzing the data
     data_df = obtain_data('scope_5.csv')
-    data2_df = obtain_data('scope_6.csv')
+    # data2_df = obtain_data('scope_6.csv')
     peaks = peak_finding(data_df, 10, channel)
     time_diff1 = delta_t_calc(data_df, peaks)
     fsr = fsr_calc(length, n)
+    fwhm = fwhm_calc(data_df)
+    finesse_exp, finesse_theory = finesse_calc(fsr, fwhm, length)
+    print(f'experimental finesse: {finesse_exp:.4f}')
+    print(f'theoretical finesse: {finesse_theory}')
     time_diff2 = delta_t_fit(data_df, peaks, fsr)
     print(f'time difference with no fitting: {time_diff1}')
     print(f'time difference with linear fitting: {time_diff2}')
