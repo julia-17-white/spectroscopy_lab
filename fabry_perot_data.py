@@ -77,7 +77,7 @@ def lin_fitting(x_vals: list, y_vals: list):
 
     print(f'The equation of the line is y={slope:.4f}x + {intercept:.4f}')
 
-    print(fit_result.fit_report())
+    # print(fit_result.fit_report())
     
     return l_vals, slope, intercept
 
@@ -120,7 +120,7 @@ def gauss_fitting(x_vals: list, y_vals: list):
 
     print('The center value is ' + str(center) + ' +/- ' + str(center_unc))
 
-    print(fit_result.fit_report())
+    # print(fit_result.fit_report())
 
     return g_vals, center, height, fwhm
 
@@ -185,7 +185,7 @@ def fwhm_calc(df):
 
 def finesse_calc(fsr, fwhm, l):
     finesse_exp = fsr/fwhm
-    finesse_the = ((l*fsr)/(2*(scipy.constants.c)))
+    finesse_the = ((100*l*fsr*1E6)/(2*(scipy.constants.c))) 
     return finesse_exp, finesse_the
 
 
@@ -204,7 +204,7 @@ def main():
     fwhm = fwhm_calc(data_df)
     finesse_exp, finesse_theory = finesse_calc(fsr, fwhm, length)
     print(f'experimental finesse: {finesse_exp:.4f}')
-    print(f'theoretical finesse: {finesse_theory}')
+    print(f'theoretical finesse: {finesse_theory:.4f}')
     time_diff2 = delta_t_fit(data_df, peaks, fsr)
     print(f'time difference with no fitting: {time_diff1}')
     print(f'time difference with linear fitting: {time_diff2}')
