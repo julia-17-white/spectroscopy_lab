@@ -6,6 +6,17 @@ import scipy
 from scipy.optimize import curve_fit
 
 def obtain_data(filename):
+    '''
+    Method using pandas read_csv function to obtain the oscilliscope data,
+    clean it up, and plot it for preliminary analysis.
+
+    Paraters:
+        filename: the name of the csv file being read in.
+
+    ReturnsL
+        df: the dataframe containing the csv's data
+    '''
+
     # reading in the csv
     df = pd.read_csv(filename)
 
@@ -23,14 +34,30 @@ def obtain_data(filename):
     plt.plot(df['x-axis'], df['1'])
     plt.plot(df['x-axis'], df['2'])
     plt.xlabel('time (s)')
-    plt.ylabel('voltage')
+    plt.ylabel('voltage (V)')
     # plt.plot(df['x-axis'], df['1'])
 
     return df
 
 #################################################################
 # using the scipy peak finding algorithm to locate the peaks
-def peak_finding(df, peak_width, channel, neg = False):
+def peak_finding(df, peak_width, channel, neg: bool = False):
+    '''
+    Method employing scipy's signal's find_peaks algorithm to find the
+    peaks of a dataframe. It then plots these peaks on to p of the data,
+    allowign the user to determine its level of success.
+
+    Parameters:
+        df: the dataframe containing the data
+        peak_width: allows you to specify the width of each peaks,
+            controlling how many are obtained, etc.
+        channel: specifies which column of the dataframe is being searched.
+        neg: boolean specifying if we want to find maxima or minima
+
+    Returns:
+        peaks: the array containing all of the peaks and their associated info.
+    '''
+
     if neg == True:
         x = -1
     else:
@@ -158,6 +185,16 @@ def fsr_calc(l, n):
     print(f'the free spectral range is {fsr}')
     return fsr
 
+def freq_calibration(fsr, delta_t, df):
+    freq_cal = ((fsr)/delta_t)*df['x-axis'] #MHz
+
+    # plt.figure()
+    # plt.plot(freq_cal, df['1'])
+    return freq_cal
+
+#################################################################
+# Calculating the Finesse
+
 def fwhm_calc(df):
     # min_data = df
     # min_data['1'] = df['1']*-1
@@ -188,26 +225,66 @@ def finesse_calc(fsr, fwhm, l):
     finesse_the = ((100*l*fsr*1E6)/(2*(scipy.constants.c))) 
     return finesse_exp, finesse_the
 
+#################################################################
+# Calculating the Percentage of CO in the cell
+
+def transmittance_calc(df, df2, delta_t, freq_cal):
+    # print(freq_cal)
+    transmittance = df['2']/df2['2']
+    plt.figure()
+    # plt.plot(x_vals, df['2'])
+    # plt.plot(x_vals, df2['2'])
+    plt.plot(freq_cal, transmittance)
+
+    return transmittance
+
+
+def phi_calc(freq_cal, gamma, P):
+    phi_val = []
+    for val in freq_cal:
+        phi_val.append(float(1/np.pi) * ((gamma*P)/((gamma * P)**2 + val**2)))
+
+    return phi_val
+
+
+def percent_co(transmittance, freq_cal, n, l, S, phi):
+    tau = -np.log(transmittance)
+    print(tau)
+    chi = []
+    for i in range(len(phi)):
+        chi.append(n*l*S*(phi[i]/tau.iloc[i]))
+    plt.figure()
+    plt.plot(freq_cal, chi)
+
+
 
 def main():
     # defining necessary constants, etc.
     channel = '1'
     length = 16.483 * 10 # cm
     n = 3.45 # refractive index of Silicon https://srd.nist.gov/jpcrdreprint/1.555624.pdf
+    gamma = 0.068 #broadening coefficient in 1/(cm * atm)
+    P = 1 # atm
+    S = 1.610E-23 # line strength in 1/cm
 
     # analyzing the data
     data_df = obtain_data('scope_5.csv')
-    # data2_df = obtain_data('scope_6.csv')
+    data2_df = obtain_data('scope_6.csv')
     peaks = peak_finding(data_df, 10, channel)
     time_diff1 = delta_t_calc(data_df, peaks)
     fsr = fsr_calc(length, n)
     fwhm = fwhm_calc(data_df)
+    print(f'fwh: {fwhm:.4f}')
+    freq_cal = freq_calibration(fsr, time_diff1, data_df)
     finesse_exp, finesse_theory = finesse_calc(fsr, fwhm, length)
     print(f'experimental finesse: {finesse_exp:.4f}')
     print(f'theoretical finesse: {finesse_theory:.4f}')
-    time_diff2 = delta_t_fit(data_df, peaks, fsr)
-    print(f'time difference with no fitting: {time_diff1}')
-    print(f'time difference with linear fitting: {time_diff2}')
+    # time_diff2 = delta_t_fit(data_df, peaks, fsr)
+    print(f'time difference with no fitting: {time_diff1:.4f}s')
+    # print(f'time difference with linear fitting: {time_diff2}')
+    transmittance = transmittance_calc(data_df, data2_df, time_diff1, freq_cal)
+    phi = phi_calc(freq_cal, gamma, P)
+    percent_co(transmittance, freq_cal, n, length, S, phi)
     plt.show()
 
 
