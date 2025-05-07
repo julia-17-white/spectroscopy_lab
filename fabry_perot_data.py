@@ -228,9 +228,13 @@ def finesse_calc(fsr, fwhm, l):
 #################################################################
 # Calculating the Percentage of CO in the cell
 
-def transmittance_calc(df, df2, delta_t, freq_cal):
+def transmittance_calc(df, df2, freq_cal):
     # print(freq_cal)
     transmittance = df['2']/df2['2']
+    # need to normalize the transmittances
+    # subt_val = 1 - max(transmittance)
+    transmittance = transmittance / np.max(transmittance)
+
     plt.figure()
     # plt.plot(x_vals, df['2'])
     # plt.plot(x_vals, df2['2'])
@@ -239,22 +243,54 @@ def transmittance_calc(df, df2, delta_t, freq_cal):
     return transmittance
 
 
-def phi_calc(freq_cal, gamma, P):
-    phi_val = []
-    for val in freq_cal:
-        phi_val.append(float(1/np.pi) * ((gamma*P)/((gamma * P)**2 + val**2)))
+# def phi_calc(freq_cal, gamma, P):
+#     phi_val = []
+#     for val in freq_cal:
+#         phi_val.append(float(1/np.pi) * ((gamma*P)/((gamma * P)**2 + val**2)))
 
-    return phi_val
+#     return phi_val
 
 
-def percent_co(transmittance, freq_cal, n, l, S, phi):
+# def percent_co(transmittance, freq_cal, n, l, S, phi):
+#     tau = -np.log(transmittance)
+#     chi = []
+#     for i in range(len(phi)):
+#         chi.append(n*l*S*(phi[i]/tau.iloc[i]))
+#     plt.figure()
+#     plt.plot(freq_cal, chi)
+
+#     chi_val = np.max(chi)
+#     return chi_val
+
+def tau_theoretical(nu, P, gamma, L, S):
+    r = 2.43 # cm
+    V = float(np.pi * r**2 * L) # cm^3 
+    k_erg = 1.380469E-16 # erg/K
+    k = k_erg * (9.869E-7) # atm/K
+    T = 293 # kelvin
+    n = P / (k * T)
+    chi = 1
+
+    phi = [] # lineshape function
+    tau = [] # optical depth
+
+    for i in range(len(nu)):
+        phi_val = float((1/np.pi) * ((gamma*P)/((gamma * P)**2 + nu.iloc[i]**2)))
+        phi.append(phi_val)
+        tau_val = chi * n * L * S * phi_val
+        tau.append(tau_val)
+
+    return tau
+
+def tau_calc(transmittance):
     tau = -np.log(transmittance)
-    print(tau)
-    chi = []
-    for i in range(len(phi)):
-        chi.append(n*l*S*(phi[i]/tau.iloc[i]))
-    plt.figure()
-    plt.plot(freq_cal, chi)
+    return tau
+
+def chi_diff(tau_theory, tau_exp):
+    chi_diff = np.max(tau_exp) - np.max(tau_theory)
+    chi_exp = 1 - chi_diff
+
+    return chi_exp
 
 
 
@@ -262,6 +298,7 @@ def main():
     # defining necessary constants, etc.
     channel = '1'
     length = 16.483 * 10 # cm
+    cell_length = 40.3 # cm
     n = 3.45 # refractive index of Silicon https://srd.nist.gov/jpcrdreprint/1.555624.pdf
     gamma = 0.068 #broadening coefficient in 1/(cm * atm)
     P = 1 # atm
@@ -282,9 +319,19 @@ def main():
     # time_diff2 = delta_t_fit(data_df, peaks, fsr)
     print(f'time difference with no fitting: {time_diff1:.4f}s')
     # print(f'time difference with linear fitting: {time_diff2}')
-    transmittance = transmittance_calc(data_df, data2_df, time_diff1, freq_cal)
-    phi = phi_calc(freq_cal, gamma, P)
-    percent_co(transmittance, freq_cal, n, length, S, phi)
+    transmittance = transmittance_calc(data_df, data2_df, freq_cal)
+    # phi = phi_calc(freq_cal, gamma, P)
+    # chi = percent_co(transmittance, freq_cal, n, cell_length, S, phi)
+    # print(f'chi = {chi}')
+
+    tau_theory = tau_theoretical(freq_cal, P, gamma, cell_length, S)
+    tau_exp = tau_calc(transmittance)
+    print(f'theoretical tau value: {np.max(tau_theory)}')
+    print(f'experimental tau value: {np.max(tau_exp)}')
+
+    chi_res = chi_diff(tau_theory, tau_exp)
+    print(f'measured chi value: {chi_res}')
+
     plt.show()
 
 
