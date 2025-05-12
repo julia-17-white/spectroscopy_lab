@@ -70,7 +70,7 @@ def peak_finding(df, peak_width, channel, neg: bool = False):
     # the +8 is to account for the NaN indices which were removed
     # the +36 is a y-axis normalization
     plt.xlabel('time (s)')
-    plt.ylabel('voltage')
+    plt.ylabel('voltage (V)')
 
     return(peaks)
 
@@ -172,8 +172,8 @@ def delta_t_fit(df, peaks, fsr):
     x_data, y_data = pol_fitting(x_ax, y_ax)
     plt.plot(x_data, y_data, color='orange', label = 'polynomial fit')
     plt.legend()
-    plt.ylabel('frequency')
-    plt.xlabel('time')
+    plt.ylabel('frequency (fsr)')
+    plt.xlabel('time (s)')
 
     # time_diff = lin_fit[1] # 1/(the slope)
     # return time_diff
@@ -214,9 +214,12 @@ def fwhm_calc(df):
     y_shifted = y_vals - y_shift
 
     plt.figure()
-    plt.plot(x_centered, y_shifted)
+    plt.plot(x_centered, y_shifted, label='data')
     gauss_fit, center, height, fwhm = gauss_fitting(x_centered, y_shifted)
-    plt.plot(x_centered, gauss_fit)
+    plt.plot(x_centered, gauss_fit, label='fit')
+    plt.xlabel('time (s)')
+    plt.ylabel('Voltage (V)')
+    plt.legend()
 
     return fwhm
 
@@ -239,6 +242,8 @@ def transmittance_calc(df, df2, freq_cal):
     # plt.plot(x_vals, df['2'])
     # plt.plot(x_vals, df2['2'])
     plt.plot(freq_cal, transmittance)
+    plt.ylabel('transmittance')
+    plt.xlabel('frequency difference (Hz)')
 
     return transmittance
 
@@ -262,25 +267,35 @@ def transmittance_calc(df, df2, freq_cal):
 #     chi_val = np.max(chi)
 #     return chi_val
 
-def tau_theoretical(nu, P, gamma, L, S):
+def tau_theoretical(nu, P, gamma, L, S, L_unc, P_unc):
     r = 2.43 # cm
+    r_unc = 0.005 # cm
     V = float(np.pi * r**2 * L) # cm^3 
+    V_unc = np.sqrt((2*np.pi*r*L*r_unc)**2 + (np.pi*r**2*L_unc))
+    print(f'the volume of the cell is {V:.4f} +/- {V_unc:.4f} cm^3')
     k_erg = 1.380469E-16 # erg/K
     k = k_erg * (9.869E-7) # atm/K
     T = 293 # kelvin
-    n = P / (k * T)
+    T_unc = 1
+    n = (P * V) / (k * T)
+    n_unc = np.sqrt((V/(k*T)*V_unc)**2 + ((-P*V)/(k*T**2)*T_unc)**2) # + (P/(k*T)*P_unc)**2
+    # should i include a pressure uncertainty?
+    # print(f'n = {n:.4f} +/- {n_unc:.4f}')
     chi = 1
 
     phi = [] # lineshape function
     tau = [] # optical depth
+    tau_unc = []
 
     for i in range(len(nu)):
         phi_val = float((1/np.pi) * ((gamma*P)/((gamma * P)**2 + nu.iloc[i]**2)))
         phi.append(phi_val)
         tau_val = chi * n * L * S * phi_val
+        tau_unc_val = np.sqrt( (chi*L*S*phi_val*n_unc)**2 + (chi*n*S*phi_val*L_unc)**2 )
         tau.append(tau_val)
+        tau_unc.append(tau_unc_val)
 
-    return tau
+    return tau, tau_unc
 
 def tau_calc(transmittance):
     tau = -np.log(transmittance)
@@ -299,9 +314,11 @@ def main():
     channel = '1'
     length = 16.483 * 10 # cm
     cell_length = 40.3 # cm
+    cell_length_unc = 0.05 # cm
     n = 3.45 # refractive index of Silicon https://srd.nist.gov/jpcrdreprint/1.555624.pdf
     gamma = 0.068 #broadening coefficient in 1/(cm * atm)
     P = 1 # atm
+    P_unc = 0.5 # atm
     S = 1.610E-23 # line strength in 1/cm
 
     # analyzing the data
@@ -324,13 +341,15 @@ def main():
     # chi = percent_co(transmittance, freq_cal, n, cell_length, S, phi)
     # print(f'chi = {chi}')
 
-    tau_theory = tau_theoretical(freq_cal, P, gamma, cell_length, S)
+    tau_theory, tau_theory_unc = tau_theoretical(freq_cal, P, gamma, cell_length, S, cell_length_unc, P_unc)
     tau_exp = tau_calc(transmittance)
     print(f'theoretical tau value: {np.max(tau_theory)}')
     print(f'experimental tau value: {np.max(tau_exp)}')
 
     chi_res = chi_diff(tau_theory, tau_exp)
     print(f'measured chi value: {chi_res}')
+
+    delta_t_fit(data_df, peaks, fsr)
 
     plt.show()
 

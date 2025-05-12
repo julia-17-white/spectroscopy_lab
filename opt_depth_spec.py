@@ -6,10 +6,11 @@ L = 40.3 #length in cm
 P = 1 # atm
 r = 2.43 # cm
 V = float(np.pi * r**2 * L) # cm^3 
+print(f'volume = {V}')
 k_erg = 1.380469E-16 # erg/K
 k = k_erg * (9.869E-7) # atm/K
 T = 293 # kelvin
-n = P / (k * T)
+n = P*V / (k * T)
 chi = 1 #tells us the percentage of molecules in the cell that are CO
 
 gamma = 0.068 #broadening coefficient in 1/(cm * atm)
