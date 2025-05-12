@@ -133,7 +133,7 @@ def pol_fitting(x_vals: list, y_vals: list):
         return a + b * x + c * x ** 2 + d * x ** 3
     
     popt, _ = curve_fit(func, x_vals, y_vals)
-    print(f'polynomial fit result: {popt}')
+    # print(f'polynomial fit result: {popt}')
     # print(popt)
     x_fit = np.linspace(min(x_vals), max(x_vals), 500)
     y_fit = func(x_fit, *popt)
@@ -168,12 +168,15 @@ def gauss_fitting(x_vals: list, y_vals: list):
     center_unc = fit_result.params['center'].stderr
     height = fit_result.params['amplitude'].value
     fwhm = fit_result.params['fwhm'].value
+    fwhm_unc = fit_result.params['fwhm'].stderr
 
     print('The center value is ' + str(center) + ' +/- ' + str(center_unc))
 
     # print(fit_result.fit_report())
+    if fwhm_unc is None:
+        fwhm_unc = 0.01*fwhm # very arbitrary but I have no other way to define it
 
-    return g_vals, center, height, fwhm
+    return g_vals, center, height, fwhm, fwhm_unc
 
 
 #################################################################
@@ -225,7 +228,7 @@ def fsr_calc(l, n, l_unc):
     print(f'the free spectral range is {fsr} +/- {fsr_unc}')
     return fsr, fsr_unc
 
-def freq_calibration(fsr, delta_t, df, fsr_unc, delta_t_unc):
+def freq_calibration(fsr, delta_t, df):
     '''
     Method to build out the frequency calibration array.
     '''
@@ -239,7 +242,7 @@ def freq_calibration(fsr, delta_t, df, fsr_unc, delta_t_unc):
 #################################################################
 # Calculating the Finesse
 
-def fwhm_calc(df):
+def fwhm_calc(df, fsr, delta_t):
     # min_data = df
     # min_data['1'] = df['1']*-1
     mins = peak_finding(df, 1, '1', True)
@@ -250,37 +253,52 @@ def fwhm_calc(df):
 
     x_vals = one_peak_df['x-axis'].values
     y_vals = one_peak_df['1'].values
+    y_vals_c = ((fsr)/delta_t)*y_vals
 
     x_shift = x_vals.mean()
     x_centered = x_vals - x_shift
 
-    y_shift = y_vals.min()
-    y_shifted = y_vals - y_shift
+    y_shift = y_vals_c.min()
+    y_shifted = y_vals_c - y_shift
 
     plt.figure()
     plt.plot(x_centered, y_shifted, label='data')
-    gauss_fit, center, height, fwhm = gauss_fitting(x_centered, y_shifted)
+    gauss_fit, center, height, fwhm , fwhm_unc = gauss_fitting(x_centered, y_shifted)
     plt.plot(x_centered, gauss_fit, label='fit')
-    plt.xlabel('time (s)')
+    plt.xlabel('frequency (MHz)')
     plt.ylabel('Voltage (V)')
     plt.legend()
 
-    return fwhm
+    # print(f'fwhm unc = {fwhm_unc}')
 
-def finesse_calc(fsr, fwhm, l):
+    return fwhm, fwhm_unc
+
+def finesse_calc(fsr, fwhm, l, fsr_unc, fwhm_unc, l_unc):
     finesse_exp = fsr/fwhm
-    finesse_the = ((100*l*fsr*1E6)/(2*(scipy.constants.c))) 
-    return finesse_exp, finesse_the
+    finesse_the = ((l*fsr*1E9)/(2*(scipy.constants.c))) 
+
+    finesse_e_unc = np.sqrt(((1/fwhm)*fsr_unc)**2 + ((-fsr/(fwhm**2))*fwhm_unc)**2)
+    finesse_t_unc = (1E9/(2*scipy.constants.c))*np.sqrt((fsr*l_unc)**2 + (l*fsr_unc)**2)
+
+    return finesse_exp, finesse_the, finesse_e_unc, finesse_t_unc
 
 #################################################################
 # Calculating the Percentage of CO in the cell
 
 def transmittance_calc(df, df2, freq_cal):
+    '''
+    Method to calculate the transmittance of light through the cell and
+    thus find the absorption line. This uses both of the dataframes, dividing
+    the light going through the cell by the light not going through the cell.
+    '''
     # print(freq_cal)
     transmittance = df['2']/df2['2']
     # need to normalize the transmittances
     # subt_val = 1 - max(transmittance)
     transmittance = transmittance / np.max(transmittance)
+
+    trans_unc = 0.001 # the data points don't come with uncertainties so we
+    # will assume the uncertainty starting here
 
     plt.figure()
     # plt.plot(x_vals, df['2'])
@@ -289,7 +307,7 @@ def transmittance_calc(df, df2, freq_cal):
     plt.ylabel('transmittance')
     plt.xlabel('frequency difference (Hz)')
 
-    return transmittance
+    return transmittance, trans_unc
 
 
 # def phi_calc(freq_cal, gamma, P):
@@ -312,6 +330,12 @@ def transmittance_calc(df, df2, freq_cal):
 #     return chi_val
 
 def tau_theoretical(nu, P, gamma, L, S, L_unc, P_unc):
+    '''
+    Method based off of the simulationscript to calculate the
+    theoretical optical depth (tau value) of this setup as well
+    as its uncertainty.
+    '''
+
     r = 2.43 # cm
     r_unc = 0.005 # cm
     V = float(np.pi * r**2 * L) # cm^3 
@@ -334,22 +358,35 @@ def tau_theoretical(nu, P, gamma, L, S, L_unc, P_unc):
     for i in range(len(nu)):
         phi_val = float((1/np.pi) * ((gamma*P)/((gamma * P)**2 + nu.iloc[i]**2)))
         phi.append(phi_val)
-        tau_val = chi * n * L * S * phi_val
-        tau_unc_val = np.sqrt( (chi*L*S*phi_val*n_unc)**2 + (chi*n*S*phi_val*L_unc)**2 )
+        tau_val = chi * n * L * S * phi_val #* 1E6
+        tau_unc_val = np.sqrt( (chi*L*S*phi_val*n_unc)**2 + (chi*n*S*phi_val*L_unc)**2 )#* 1E6
         tau.append(tau_val)
         tau_unc.append(tau_unc_val)
 
     return tau, tau_unc
 
-def tau_calc(transmittance):
-    tau = -np.log(transmittance)
-    return tau
+def tau_calc(transmittance, trans_unc):
+    '''
+    Method to calculate the experimental optical depth and its
+    uncertainty using the experimentally measured transmittance values.
+    '''
 
-def chi_diff(tau_theory, tau_theory_unc, tau_exp):
+    tau = -np.log(transmittance)
+    tau_unc = np.sqrt(((-1/transmittance)*trans_unc)**2)
+    return tau, tau_unc
+
+def chi_diff(tau_theory, tau_theory_unc, tau_exp, tau_exp_unc):
+    '''
+    Method comparing the experimental and theoretical optical
+    depth values to obtain a value for the number density of
+    carbon monoxide molecules in the cylinder.
+    '''
+
     chi_diff = np.max(tau_exp) - np.max(tau_theory)
+    chi_diff_unc = np.sqrt(np.max(tau_exp_unc)**2 + np.max(tau_theory_unc)**2)
     chi_exp = 1 - chi_diff
 
-    return chi_exp
+    return chi_exp, chi_diff_unc
 
 
 
@@ -372,27 +409,27 @@ def main():
     peaks = peak_finding(data_df, 10, channel)
     time_diff1, time_diff_unc = delta_t_calc(data_df, peaks)
     fsr, fsr_unc = fsr_calc(length, n, length_unc)
-    fwhm = fwhm_calc(data_df)
+    freq_cal = freq_calibration(fsr, time_diff1, data_df)
+    fwhm, fwhm_unc = fwhm_calc(data_df, fsr, time_diff1)
     print(f'fwh: {fwhm:.4f}')
-    freq_cal = freq_calibration(fsr, time_diff1, data_df, fsr_unc, time_diff_unc)
-    finesse_exp, finesse_theory = finesse_calc(fsr, fwhm, length)
-    print(f'experimental finesse: {finesse_exp:.4f}')
-    print(f'theoretical finesse: {finesse_theory:.4f}')
+    finesse_exp, finesse_theory, finesse_exp_unc, finesse_theory_unc = finesse_calc(fsr, fwhm, length, fsr_unc, fwhm_unc, length_unc)
+    print(f'experimental finesse: {finesse_exp:.4f} +/- {finesse_exp_unc}')
+    print(f'theoretical finesse: {finesse_theory:.4f} +/- {finesse_theory_unc}')
     # time_diff2 = delta_t_fit(data_df, peaks, fsr)
     print(f'time difference with no fitting: {time_diff1:.4f}s')
     # print(f'time difference with linear fitting: {time_diff2}')
-    transmittance = transmittance_calc(data_df, data2_df, freq_cal)
+    transmittance, transmittance_unc = transmittance_calc(data_df, data2_df, freq_cal)
     # phi = phi_calc(freq_cal, gamma, P)
     # chi = percent_co(transmittance, freq_cal, n, cell_length, S, phi)
     # print(f'chi = {chi}')
 
     tau_theory, tau_theory_unc = tau_theoretical(freq_cal, P, gamma, cell_length, S, cell_length_unc, P_unc)
-    tau_exp = tau_calc(transmittance)
-    print(f'theoretical tau value: {np.max(tau_theory)}')
-    print(f'experimental tau value: {np.max(tau_exp)}')
+    tau_exp, tau_exp_unc = tau_calc(transmittance, transmittance_unc)
+    print(f'theoretical tau value: {np.max(tau_theory)} +/- {np.max(tau_theory_unc)}') # i think something is wrong with this tau value
+    print(f'experimental tau value: {np.max(tau_exp):.4f} +/- {np.max(tau_exp_unc):.4f}')
 
-    chi_res = chi_diff(tau_theory, tau_theory_unc, tau_exp)
-    print(f'measured chi value: {chi_res}')
+    chi_res, chi_unc = chi_diff(tau_theory, tau_theory_unc, tau_exp, tau_exp_unc)
+    print(f'measured chi value: {chi_res} +/- {chi_unc}')
 
     delta_t_fit(data_df, peaks, fsr)
 
