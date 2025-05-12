@@ -63,7 +63,7 @@ def peak_finding(df, peak_width, channel, neg: bool = False):
     else:
         x = 1
     peaks = scipy.signal.find_peaks(x*df[channel], width=peak_width)
-    # print(peaks[1])
+    # print(peaks)
     plt.figure()
     plt.plot(df['x-axis'], df[channel])
     plt.scatter(df['x-axis'][peaks[0] + 8], peaks[1]['prominences'] + 0.36, c = 'm', s=15)
@@ -78,14 +78,30 @@ def peak_finding(df, peak_width, channel, neg: bool = False):
 #################################################################
 # now i'll take the two middle peaks and calculate delta t with them
 def delta_t_calc(df, peaks):
+    '''
+    Method finding the time difference between two consecutive peaks.
+
+    Parameters:
+        df: the dataframe containing the data.
+        peaks: the array containing all of the peaks and their associated info.
+
+    Returns:
+        time_diff: the time difference between the successive peaks
+    '''
+
     mid_point = int(len(peaks[0])/2)
     time_diff = df['x-axis'][peaks[0][mid_point]] - df['x-axis'][peaks[0][mid_point - 1]]
     print(f'the time difference is {time_diff:.4f} seconds')
-    return time_diff
+    time_diff_unc = 0.0005 # s arbitrary value found by looking at the accuracy of the peaks array
+        # measurements --> no proper uncertainty is provided
+    return time_diff, time_diff_unc
 
 #################################################################
 # Defining a Number of Fitting Algorithms
 def lin_fitting(x_vals: list, y_vals: list):
+    '''
+    Method to preform a linear fit on the data.
+    '''
 
     # define the Model
     l_model = lm.models.LinearModel(independent_vars='x')
@@ -109,6 +125,10 @@ def lin_fitting(x_vals: list, y_vals: list):
     return l_vals, slope, intercept
 
 def pol_fitting(x_vals: list, y_vals: list):
+    '''
+    Method to preform a polynomial x^3 fit on the data.
+    '''
+
     def func(x, a, b, c, d):
         return a + b * x + c * x ** 2 + d * x ** 3
     
@@ -120,6 +140,10 @@ def pol_fitting(x_vals: list, y_vals: list):
     return x_fit, y_fit
 
 def gauss_fitting(x_vals: list, y_vals: list):
+    '''
+    Method to preform a Gaussian fit on the data.
+    '''
+
     # USE **KWARGS TO MAKE THIS MORE ROBUST IF DESIRED
 
     # define the Model
@@ -155,6 +179,16 @@ def gauss_fitting(x_vals: list, y_vals: list):
 #################################################################
 # Building the claibration curve
 def delta_t_fit(df, peaks, fsr):
+    '''
+    Method to develop the calibration curve for the delta_t
+    to figure out how good of an approximation linearity is
+
+    Plots:
+        the delta_t vs fsr time stamps where fsr steps by one at each peak
+        the linear fit of the center data points
+        the polynomial fit of all the data points
+    '''
+
     plt.figure()
     y_ax = np.arange(len(peaks[0]))
     x_ax = df['x-axis'].iloc[peaks[0]]
@@ -178,14 +212,24 @@ def delta_t_fit(df, peaks, fsr):
     # time_diff = lin_fit[1] # 1/(the slope)
     # return time_diff
 
-def fsr_calc(l, n):
+def fsr_calc(l, n, l_unc):
+    '''
+    Method to calculate the theoretical free spectral range using 
+    the measured lengths and calculated n value
+    '''
+
     # need index of refraction of silicon at 1580nm
     # USE THIS CALCULATED FSR TO CALIBRATE THE Y-AXIS OF THE CALIBRATION PLOT
     fsr = (scipy.constants.c / (2 * l * n) ) * 1E-6 # reported in MHz
-    print(f'the free spectral range is {fsr}')
-    return fsr
+    fsr_unc = np.sqrt(((-scipy.constants.c)/(2 * l**2 * n) * l_unc)**2)* (1E-6)
+    print(f'the free spectral range is {fsr} +/- {fsr_unc}')
+    return fsr, fsr_unc
 
-def freq_calibration(fsr, delta_t, df):
+def freq_calibration(fsr, delta_t, df, fsr_unc, delta_t_unc):
+    '''
+    Method to build out the frequency calibration array.
+    '''
+
     freq_cal = ((fsr)/delta_t)*df['x-axis'] #MHz
 
     # plt.figure()
@@ -301,7 +345,7 @@ def tau_calc(transmittance):
     tau = -np.log(transmittance)
     return tau
 
-def chi_diff(tau_theory, tau_exp):
+def chi_diff(tau_theory, tau_theory_unc, tau_exp):
     chi_diff = np.max(tau_exp) - np.max(tau_theory)
     chi_exp = 1 - chi_diff
 
@@ -312,7 +356,8 @@ def chi_diff(tau_theory, tau_exp):
 def main():
     # defining necessary constants, etc.
     channel = '1'
-    length = 16.483 * 10 # cm
+    length = 16.483 / 10 # cm
+    length_unc = 0.0005 / 10 # cm
     cell_length = 40.3 # cm
     cell_length_unc = 0.05 # cm
     n = 3.45 # refractive index of Silicon https://srd.nist.gov/jpcrdreprint/1.555624.pdf
@@ -325,11 +370,11 @@ def main():
     data_df = obtain_data('scope_5.csv')
     data2_df = obtain_data('scope_6.csv')
     peaks = peak_finding(data_df, 10, channel)
-    time_diff1 = delta_t_calc(data_df, peaks)
-    fsr = fsr_calc(length, n)
+    time_diff1, time_diff_unc = delta_t_calc(data_df, peaks)
+    fsr, fsr_unc = fsr_calc(length, n, length_unc)
     fwhm = fwhm_calc(data_df)
     print(f'fwh: {fwhm:.4f}')
-    freq_cal = freq_calibration(fsr, time_diff1, data_df)
+    freq_cal = freq_calibration(fsr, time_diff1, data_df, fsr_unc, time_diff_unc)
     finesse_exp, finesse_theory = finesse_calc(fsr, fwhm, length)
     print(f'experimental finesse: {finesse_exp:.4f}')
     print(f'theoretical finesse: {finesse_theory:.4f}')
@@ -346,7 +391,7 @@ def main():
     print(f'theoretical tau value: {np.max(tau_theory)}')
     print(f'experimental tau value: {np.max(tau_exp)}')
 
-    chi_res = chi_diff(tau_theory, tau_exp)
+    chi_res = chi_diff(tau_theory, tau_theory_unc, tau_exp)
     print(f'measured chi value: {chi_res}')
 
     delta_t_fit(data_df, peaks, fsr)
