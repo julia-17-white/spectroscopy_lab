@@ -223,8 +223,8 @@ def fsr_calc(l, n, l_unc):
 
     # need index of refraction of silicon at 1580nm
     # USE THIS CALCULATED FSR TO CALIBRATE THE Y-AXIS OF THE CALIBRATION PLOT
-    fsr = (scipy.constants.c / (2 * l * n) ) * 1E-6 # reported in MHz
-    fsr_unc = np.sqrt(((-scipy.constants.c)/(2 * l**2 * n) * l_unc)**2)* (1E-6)
+    fsr = (scipy.constants.c / (2 * l * n) ) * 1E-1 * 1E-6 # reported in MHz --> the 1E-2 converts the speed of light from m to cm
+    fsr_unc = np.sqrt(((-scipy.constants.c)/(2 * l**2 * n) * l_unc)**2)* (1E-1) * 1E-6 # MHz
     print(f'the free spectral range is {fsr} +/- {fsr_unc}')
     return fsr, fsr_unc
 
@@ -274,10 +274,10 @@ def fwhm_calc(df, fsr, delta_t):
     return fwhm, fwhm_unc
 
 def finesse_calc(fsr, fwhm, l, fsr_unc, fwhm_unc, l_unc):
-    finesse_exp = fsr/fwhm
+    finesse_exp = fsr/(fwhm*10)
     finesse_the = ((l*fsr*1E9)/(2*(scipy.constants.c))) 
 
-    finesse_e_unc = np.sqrt(((1/fwhm)*fsr_unc)**2 + ((-fsr/(fwhm**2))*fwhm_unc)**2)
+    finesse_e_unc = np.sqrt(((1/fwhm)*fsr_unc)**2 + ((-fsr/(fwhm**2))*fwhm_unc)**2)*0.1
     finesse_t_unc = (1E9/(2*scipy.constants.c))*np.sqrt((fsr*l_unc)**2 + (l*fsr_unc)**2)
 
     return finesse_exp, finesse_the, finesse_e_unc, finesse_t_unc
