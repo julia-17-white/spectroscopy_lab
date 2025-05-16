@@ -139,12 +139,51 @@ def pol_fitting(x_vals: list, y_vals: list):
     y_fit = func(x_fit, *popt)
     return x_fit, y_fit
 
+def lmfit_pol_fitting(x_vals: list, y_vals: list):
+    '''
+    Method to preform a polynomial x^3 fit on the data.
+    '''
+
+    def func(x, a, b, c, d):
+        return a + b * x + c * x ** 2 + d * x ** 3
+    
+    params = lm.Parameters()
+    
+    #Note, the names here MUST match the parameters to your model function
+    params.add('a', vary = True, value = 0, min = -1, max = 1)
+    params.add('b', vary = True, value = 0, min = -1, max = 1)
+    params.add('c', vary = True, value = 0, min = -1, max = 1)
+    params.add('d', vary = True, value = 0, min = -1, max = 1)
+    
+    # define the Model
+    g_model = lm.Model(func)
+
+    # # set initial parameters (optional step)
+    # g_model.set_param_hint('amplitude', value = 0.5)
+    # g_model.set_param_hint('center', value = 0)
+    # g_model.set_param_hint('sigma', value = 0.5)
+    # g_model.set_param_hint('gamma', value=-2)
+
+    # create parameters
+    # my_params = g_model.make_params()
+
+    # perform fit
+    fit_result = g_model.fit(y_vals, x = x_vals, params = params)
+
+    # acquiring data from the fit
+    p_vals = fit_result.eval(x=x_vals)
+
+    # print('The center value is ' + str(center) + ' +/- ' + str(center_unc))
+
+    # print(fit_result.fit_report())
+
+    return p_vals
+
+
 def gauss_fitting(x_vals: list, y_vals: list):
     '''
     Method to preform a Gaussian fit on the data.
     '''
-
-    # USE **KWARGS TO MAKE THIS MORE ROBUST IF DESIRED
 
     # define the Model
     g_model = lm.models.GaussianModel(independent_vars='x')
@@ -177,6 +216,52 @@ def gauss_fitting(x_vals: list, y_vals: list):
         fwhm_unc = 0.01*fwhm # very arbitrary but I have no other way to define it
 
     return g_vals, center, height, fwhm, fwhm_unc
+
+def lorentz_fitting(x_vals: list, y_vals: list):
+    '''
+    Method to preform a Lorentzian fit on the data.
+    '''
+
+    def func(x, gamma, P, chi, n, L, S, y_norm, x0):
+        phi =  (1/np.pi) * ((gamma*P)/((gamma * P)**2 + (x-x0)**2))
+        tau = chi * n * L * S * phi + y_norm
+        return tau
+
+    params = lm.Parameters()
+    
+    #Note, the names here MUST match the parameters to your model function
+    params.add('gamma', vary = True, value = 0.068, min = 0, max = 100)
+    params.add('P', vary = False, value = 1, min = -100, max = 100)
+    params.add('chi', vary = True, value = 0.92, min = 0, max = 1)
+    params.add('n', vary = False, value = 3.45, min = -100, max = 100)
+    params.add('L', vary = False, value = 40.3, min = -100, max = 100)
+    params.add('S', vary = True, value = 1.610E-23, min = 0, max = 100)
+    params.add('y_norm', vary = True, value=np.min(y_vals))
+    params.add('x0', vary = True, value = 60, min = 0, max = 200)
+    
+    # define the Model
+    l_model = lm.Model(func)
+
+    # # set initial parameters (optional step)
+    # g_model.set_param_hint('amplitude', value = 0.5)
+    # g_model.set_param_hint('center', value = 0)
+    # g_model.set_param_hint('sigma', value = 0.5)
+    # g_model.set_param_hint('gamma', value=-2)
+
+    # create parameters
+    # my_params = g_model.make_params()
+
+    # perform fit
+    fit_result = l_model.fit(y_vals, x = x_vals, params = params)
+
+    # acquiring data from the fit
+    t_vals = fit_result.eval(x=x_vals)
+
+    # print('The center value is ' + str(center) + ' +/- ' + str(center_unc))
+
+    # print(fit_result.fit_report())
+
+    return t_vals
 
 
 #################################################################
@@ -223,8 +308,8 @@ def fsr_calc(l, n, l_unc):
 
     # need index of refraction of silicon at 1580nm
     # USE THIS CALCULATED FSR TO CALIBRATE THE Y-AXIS OF THE CALIBRATION PLOT
-    fsr = (scipy.constants.c / (2 * l * n) ) * 1E-1 * 1E-6 # reported in MHz --> the 1E-2 converts the speed of light from m to cm
-    fsr_unc = np.sqrt(((-scipy.constants.c)/(2 * l**2 * n) * l_unc)**2)* (1E-1) * 1E-6 # MHz
+    fsr = (scipy.constants.c / (2 * l * n) ) * 1E-1 * 1E-6 # reported in kHz --> the 1E-1 converts the speed of light from m to cm
+    fsr_unc = np.sqrt(((-scipy.constants.c)/(2 * l**2 * n) * l_unc)**2)* (1E-1) * 1E-6 # kHz
     print(f'the free spectral range is {fsr} +/- {fsr_unc}')
     return fsr, fsr_unc
 
@@ -388,7 +473,18 @@ def chi_diff(tau_theory, tau_theory_unc, tau_exp, tau_exp_unc):
 
     return chi_exp, chi_diff_unc
 
+def fit_trans(tau, freq_cal):
+    mask = (freq_cal < 50) | (freq_cal > 65)
+    imask = (freq_cal >= 50) & (freq_cal <= 65)
+    p_vals = lmfit_pol_fitting(freq_cal[mask], tau[mask])
+    # p_vals = p_vals.eval(x=freq_cal)
+    g_vals = lorentz_fitting(freq_cal[imask], tau[imask])
 
+    plt.figure()
+    plt.plot(freq_cal, tau)
+    plt.plot(freq_cal[mask], p_vals, label = 'polynomial')
+    plt.plot(freq_cal[imask], g_vals, label = 'lorentzian')
+    plt.xlabel('hihihihihihihihihi')
 
 def main():
     # defining necessary constants, etc.
@@ -432,6 +528,8 @@ def main():
     print(f'measured chi value: {chi_res} +/- {chi_unc}')
 
     delta_t_fit(data_df, peaks, fsr)
+
+    fit_trans(tau_exp, freq_cal)
 
     plt.show()
 

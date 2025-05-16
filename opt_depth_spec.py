@@ -3,6 +3,7 @@ import numpy as np
 
 S = 1.610E-23 # line strength in 1/cm
 L = 40.3 #length in cm
+# L = 1.6843 # cm
 P = 1 # atm
 r = 2.43 # cm
 V = float(np.pi * r**2 * L) # cm^3 
