@@ -27,6 +27,6 @@ for i in range(len(nu)):
 
 plt.figure()
 plt.plot(nu, tau)
-plt.ylabel('optical depth (1/cm)')
+plt.ylabel('optical depth')
 plt.xlabel('nu (1/cm)')
 plt.show()

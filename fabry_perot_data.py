@@ -175,7 +175,7 @@ def lmfit_pol_fitting(x_vals: list, y_vals: list):
 
     # print('The center value is ' + str(center) + ' +/- ' + str(center_unc))
 
-    # print(fit_result.fit_report())
+    print(fit_result.fit_report())
 
     return p_vals
 
@@ -217,27 +217,34 @@ def gauss_fitting(x_vals: list, y_vals: list):
 
     return g_vals, center, height, fwhm, fwhm_unc
 
-def lorentz_fitting(x_vals: list, y_vals: list):
+def lorentz_fitting(x_vals: list, y_vals: list, N):
     '''
     Method to preform a Lorentzian fit on the data.
     '''
 
-    def func(x, gamma, P, chi, n, L, S, y_norm, x0):
+    def func(x, gamma, P, chi, N, L, S, y_norm, x0, a, b, c, d):
+        # change to the n matching your simulation
         phi =  (1/np.pi) * ((gamma*P)/((gamma * P)**2 + (x-x0)**2))
-        tau = chi * n * L * S * phi + y_norm
-        return tau
+        tau = chi * N * L * S * phi + y_norm
+
+        bl = a + b*x + c*x**2 + d*x**3
+        return tau + bl
 
     params = lm.Parameters()
     
     #Note, the names here MUST match the parameters to your model function
-    params.add('gamma', vary = True, value = 0.068, min = 0, max = 100)
-    params.add('P', vary = False, value = 1, min = -100, max = 100)
-    params.add('chi', vary = True, value = 0.92, min = 0, max = 1)
-    params.add('n', vary = False, value = 3.45, min = -100, max = 100)
+    params.add('gamma', vary = True, value = 0.068, min = 0, max = 3)
+    params.add('P', vary = False, value = 1, min = 0, max = 100)
+    params.add('chi', vary = True, value = 0.92, min = 0.9, max = 1)
+    params.add('N', vary = True, value = N) # min = -100, max = 100
     params.add('L', vary = False, value = 40.3, min = -100, max = 100)
-    params.add('S', vary = True, value = 1.610E-23, min = 0, max = 100)
-    params.add('y_norm', vary = True, value=np.min(y_vals))
-    params.add('x0', vary = True, value = 60, min = 0, max = 200)
+    params.add('S', vary = False, value = 1.610E-23, min = 0, max = 1)
+    params.add('y_norm', vary = False, value=0)
+    params.add('x0', vary = True, value = 58, min = 20, max = 80)
+    params.add('a', vary = True, value = -0.00380328, min = -1, max = 1)
+    params.add('b', vary = True, value = 9.7536e-04, min = -1, max = 1)
+    params.add('c', vary = True, value = -1.8850e-05, min = -1, max = 1)
+    params.add('d', vary = True, value = 9.0158e-08, min = -1, max = 1)
     
     # define the Model
     l_model = lm.Model(func)
@@ -256,12 +263,63 @@ def lorentz_fitting(x_vals: list, y_vals: list):
 
     # acquiring data from the fit
     t_vals = fit_result.eval(x=x_vals)
+    chi = fit_result.params['chi'].value
+    chi_unc = fit_result.params['chi'].stderr
 
     # print('The center value is ' + str(center) + ' +/- ' + str(center_unc))
 
-    # print(fit_result.fit_report())
+    print(fit_result.fit_report())
 
-    return t_vals
+    return t_vals, chi, chi_unc
+
+# def lorentz_fitting(x_vals: list, y_vals: list):
+#     '''
+#     Method to preform a Lorentzian fit on the data.
+#     '''
+
+#     def func(x, gamma, P, chi, N, L, S, y_norm, x0):
+#         # change to the n matching your simulation
+#         phi =  (1/np.pi) * ((gamma*P)/((gamma * P)**2 + (x-x0)**2))
+#         tau = chi * N * L * S * phi + y_norm
+#         return tau
+
+#     params = lm.Parameters()
+    
+#     #Note, the names here MUST match the parameters to your model function
+#     params.add('gamma', vary = True, value = 0.068, min = 0, max = 3)
+#     params.add('P', vary = False, value = 1, min = -100, max = 100)
+#     params.add('chi', vary = True, value = 0.92, min = 0, max = 1)
+#     params.add('N', vary = False, value = N, min = -100, max = 100)
+#     params.add('L', vary = False, value = 40.3, min = -100, max = 100)
+#     params.add('S', vary = True, value = 1.610E-23, min = 0, max = 1)
+#     params.add('y_norm', vary = True, value=np.min(y_vals))
+#     params.add('x0', vary = True, value = 60, min = 20, max = 80)
+    
+#     # define the Model
+#     l_model = lm.Model(func)
+
+#     # # set initial parameters (optional step)
+#     # g_model.set_param_hint('amplitude', value = 0.5)
+#     # g_model.set_param_hint('center', value = 0)
+#     # g_model.set_param_hint('sigma', value = 0.5)
+#     # g_model.set_param_hint('gamma', value=-2)
+
+#     # create parameters
+#     # my_params = g_model.make_params()
+
+#     # perform fit
+#     fit_result = l_model.fit(y_vals, x = x_vals, params = params)
+
+#     # acquiring data from the fit
+#     t_vals = fit_result.eval(x=x_vals)
+#     chi = fit_result.params['chi'].value
+#     chi_unc = fit_result.params['chi'].stderr
+
+#     # print('The center value is ' + str(center) + ' +/- ' + str(center_unc))
+
+#     print(fit_result.fit_report())
+
+#     return t_vals, chi, chi_unc
 
 
 #################################################################
@@ -308,8 +366,8 @@ def fsr_calc(l, n, l_unc):
 
     # need index of refraction of silicon at 1580nm
     # USE THIS CALCULATED FSR TO CALIBRATE THE Y-AXIS OF THE CALIBRATION PLOT
-    fsr = (scipy.constants.c / (2 * l * n) ) * 1E-1 * 1E-6 # reported in kHz --> the 1E-1 converts the speed of light from m to cm
-    fsr_unc = np.sqrt(((-scipy.constants.c)/(2 * l**2 * n) * l_unc)**2)* (1E-1) * 1E-6 # kHz
+    fsr = ((scipy.constants.c) / (2 * l * n) ) * 1E-9 # reported in GHz --> the 1E-1 converts the speed of light from m to cm
+    fsr_unc = np.sqrt(((-(scipy.constants.c))/(2 * l**2 * n) * l_unc)**2) * 1E-9 # GHz
     print(f'the free spectral range is {fsr} +/- {fsr_unc}')
     return fsr, fsr_unc
 
@@ -318,7 +376,7 @@ def freq_calibration(fsr, delta_t, df):
     Method to build out the frequency calibration array.
     '''
 
-    freq_cal = ((fsr)/delta_t)*df['x-axis'] #MHz
+    freq_cal = ((fsr)/delta_t)*df['x-axis'] #GHz
 
     # plt.figure()
     # plt.plot(freq_cal, df['1'])
@@ -350,7 +408,7 @@ def fwhm_calc(df, fsr, delta_t):
     plt.plot(x_centered, y_shifted, label='data')
     gauss_fit, center, height, fwhm , fwhm_unc = gauss_fitting(x_centered, y_shifted)
     plt.plot(x_centered, gauss_fit, label='fit')
-    plt.xlabel('frequency (MHz)')
+    plt.xlabel('frequency (GHz)')
     plt.ylabel('Voltage (V)')
     plt.legend()
 
@@ -359,13 +417,13 @@ def fwhm_calc(df, fsr, delta_t):
     return fwhm, fwhm_unc
 
 def finesse_calc(fsr, fwhm, l, fsr_unc, fwhm_unc, l_unc):
-    finesse_exp = fsr/(fwhm*10)
-    finesse_the = ((l*fsr*1E9)/(2*(scipy.constants.c))) 
+    finesse_exp = fsr/(fwhm * 10)
+    # finesse_the = ((l*fsr*1E9)/(2*(scipy.constants.c))) 
 
     finesse_e_unc = np.sqrt(((1/fwhm)*fsr_unc)**2 + ((-fsr/(fwhm**2))*fwhm_unc)**2)*0.1
-    finesse_t_unc = (1E9/(2*scipy.constants.c))*np.sqrt((fsr*l_unc)**2 + (l*fsr_unc)**2)
+    # finesse_t_unc = (1E9/(2*scipy.constants.c))*np.sqrt((fsr*l_unc)**2 + (l*fsr_unc)**2)
 
-    return finesse_exp, finesse_the, finesse_e_unc, finesse_t_unc
+    return finesse_exp, finesse_e_unc
 
 #################################################################
 # Calculating the Percentage of CO in the cell
@@ -390,7 +448,7 @@ def transmittance_calc(df, df2, freq_cal):
     # plt.plot(x_vals, df2['2'])
     plt.plot(freq_cal, transmittance)
     plt.ylabel('transmittance')
-    plt.xlabel('frequency difference (Hz)')
+    plt.xlabel('frequency difference (GHz)')
 
     return transmittance, trans_unc
 
@@ -421,16 +479,18 @@ def tau_theoretical(nu, P, gamma, L, S, L_unc, P_unc):
     as its uncertainty.
     '''
 
-    r = 2.43 # cm
-    r_unc = 0.005 # cm
-    V = float(np.pi * r**2 * L) # cm^3 
-    V_unc = np.sqrt((2*np.pi*r*L*r_unc)**2 + (np.pi*r**2*L_unc))
-    print(f'the volume of the cell is {V:.4f} +/- {V_unc:.4f} cm^3')
+    r = 2.43 / 100 # m
+    r_unc = 0.005 / 100 # m
+    V = float(np.pi * r**2 * L) # m^3 
+    V_unc = np.sqrt((2*np.pi*r*L*r_unc)**2 + (np.pi*r**2*L_unc)**2)
+    print(f'the volume of the cell is {V} +/- {V_unc} m^3')
     k_erg = 1.380469E-16 # erg/K
     k = k_erg * (9.869E-7) # atm/K
+    # k = 1.38e-23
     T = 293 # kelvin
     T_unc = 1
-    n = (P * V) / (k * T)
+    # P = 101325
+    n = P / (k * T)
     n_unc = np.sqrt((V/(k*T)*V_unc)**2 + ((-P*V)/(k*T**2)*T_unc)**2) # + (P/(k*T)*P_unc)**2
     # should i include a pressure uncertainty?
     # print(f'n = {n:.4f} +/- {n_unc:.4f}')
@@ -473,31 +533,53 @@ def chi_diff(tau_theory, tau_theory_unc, tau_exp, tau_exp_unc):
 
     return chi_exp, chi_diff_unc
 
-def fit_trans(tau, freq_cal):
-    mask = (freq_cal < 50) | (freq_cal > 65)
-    imask = (freq_cal >= 50) & (freq_cal <= 65)
-    p_vals = lmfit_pol_fitting(freq_cal[mask], tau[mask])
-    # p_vals = p_vals.eval(x=freq_cal)
-    g_vals = lorentz_fitting(freq_cal[imask], tau[imask])
+def fit_trans(tau, freq_cal, L, N, L_unc, N_unc):
+    # mask = (freq_cal < 50) | (freq_cal > 65)
+    # imask = (freq_cal >= 50) & (freq_cal <= 65)
+    # p_vals = lmfit_pol_fitting(freq_cal[mask], tau[mask])
+    # # p_vals = p_vals.eval(x=freq_cal)
+    # l_vals, chi, chi_unc = lorentz_fitting(freq_cal[imask], tau[imask])
+    l_vals, chi, chi_unc = lorentz_fitting(freq_cal, tau, N)
+    print(f'the fitted chi value is {chi:.4f} +/- {chi_unc:.4f}')
+    chi_unc = np.sqrt(((1/N)*N_unc)**2 + ((1/L)*L_unc)**2)
+    print(f'the fitted chi with propogated uncertainty is {chi:.4f} +/- {chi_unc:.4f}')
+
+    # full_fit = np.empty_like(freq_cal)
+    # full_fit[mask] = p_vals
+    # full_fit[imask] = l_vals
 
     plt.figure()
-    plt.plot(freq_cal, tau)
-    plt.plot(freq_cal[mask], p_vals, label = 'polynomial')
-    plt.plot(freq_cal[imask], g_vals, label = 'lorentzian')
-    plt.xlabel('hihihihihihihihihi')
+    plt.plot(freq_cal, tau, label = 'data')
+    # plt.plot(freq_cal[mask], p_vals, label = 'polynomial')
+    # plt.plot(freq_cal[imask], l_vals, label = 'lorentzian')
+    plt.plot(freq_cal, l_vals, c='m', label = 'fit')
+    plt.legend()
+    plt.xlabel('frequency (GHz)')
+    plt.ylabel('optical depth')
 
 def main():
     # defining necessary constants, etc.
     channel = '1'
-    length = 16.483 / 10 # cm
-    length_unc = 0.0005 / 10 # cm
-    cell_length = 40.3 # cm
-    cell_length_unc = 0.05 # cm
+    length = 16.483 / 1000 # m
+    length_unc = 0.001 / 1000 # m
+    cell_length = 40.3 / 100 # m
+    cell_length_unc = 0.05 / 100 # m
+    r = 2.43 / 10 # m
+    V = float(np.pi * r**2 * cell_length) # m^3 
+    k_erg = 1.380469E-16 # erg/K
+    k = k_erg * (9.869E-7) # atm/K
+    k = 1.38e-23
+    T = 293 # K
+    P = 0.97 # atm or 740  torr
+    N = 101325 / (k * T)
+    N_unc = 101325 * (1/(k * T**2)) * 1
+    print(f'N = {N} +/- {N_unc}, bolzmann = {k}')
     n = 3.45 # refractive index of Silicon https://srd.nist.gov/jpcrdreprint/1.555624.pdf
-    gamma = 0.068 #broadening coefficient in 1/(cm * atm)
-    P = 1 # atm
+    gamma_wvnmbr = 0.068 #broadening coefficient in 1/(cm * atm)
+    gamma = (10)*scipy.constants.c*gamma_wvnmbr # Hz
     P_unc = 0.5 # atm
-    S = 1.610E-23 # line strength in 1/cm
+    S_wvnmbr = 1.610E-23 # line strength in 1/cm
+    S = (10)*scipy.constants.c*S_wvnmbr
 
     # analyzing the data
     data_df = obtain_data('scope_5.csv')
@@ -508,9 +590,8 @@ def main():
     freq_cal = freq_calibration(fsr, time_diff1, data_df)
     fwhm, fwhm_unc = fwhm_calc(data_df, fsr, time_diff1)
     print(f'fwh: {fwhm:.4f}')
-    finesse_exp, finesse_theory, finesse_exp_unc, finesse_theory_unc = finesse_calc(fsr, fwhm, length, fsr_unc, fwhm_unc, length_unc)
+    finesse_exp, finesse_exp_unc = finesse_calc(fsr, fwhm, length, fsr_unc, fwhm_unc, length_unc)
     print(f'experimental finesse: {finesse_exp:.4f} +/- {finesse_exp_unc}')
-    print(f'theoretical finesse: {finesse_theory:.4f} +/- {finesse_theory_unc}')
     # time_diff2 = delta_t_fit(data_df, peaks, fsr)
     print(f'time difference with no fitting: {time_diff1:.4f}s')
     # print(f'time difference with linear fitting: {time_diff2}')
@@ -529,7 +610,7 @@ def main():
 
     delta_t_fit(data_df, peaks, fsr)
 
-    fit_trans(tau_exp, freq_cal)
+    fit_trans(tau_exp, freq_cal, cell_length, N, cell_length_unc, N_unc)
 
     plt.show()
 
